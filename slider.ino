@@ -64,7 +64,7 @@ enum State {
 };
 
 const int PADDING = 10;
-const float CALIBRATION_SPEED = 10;
+const float CALIBRATION_SPEED = 30;
 
 double acceleration = 0; // 0 is constant speed
 double velocity = 0; // indicates direction, negative/positive ~= left/right
@@ -85,6 +85,7 @@ float analogToSpeed(int value) {
 
 void setup() {
   stepper.setMaxSpeed(200);
+  stepper.setAcceleration(acceleration);
   
   // initialize the serial port:
   Serial.begin(9600);
@@ -123,40 +124,71 @@ void loop() {
  * has many side effects
  */
 void calibrate() {
+  Serial.println("Starting calibration");
   currentState = calibrating;
-  stepper.setSpeed(-CALIBRATION_SPEED);
+  float spd = -CALIBRATION_SPEED;
+  stepper.setSpeed(spd);
 
+  Serial.println(".    Finding left");
   bool foundLeftSide = false;
   while (!foundLeftSide) {
     leftSwitch.update();
     rightSwitch.update();
-    if (rightSwitch.getValue() == HIGH) {
-      stepper.setCurrentPosition(-PADDING);
+    if (rightSwitch.getValue()) {
+      spd = -stepper.speed();
+      stepper.setSpeed(spd); // turn around
+      // move so switch isn't activated anymore
+      while (rightSwitch.getValue()) {
+        stepper.runSpeed();
+        rightSwitch.update();
+        delay(0);
+      }
+      stepper.setCurrentPosition(0); // set "endpoint"
+      stepper.setSpeed(spd); // speed must be reset after setCurrentPosition
       foundLeftSide = true;
+      Serial.println("..   Found left");
+      delay(500); // TODO hack, figure out how to properly wait for switch to deactivate
+    } else if (leftSwitch.getValue()) {
       stepper.setSpeed(-stepper.speed());
-    } else if (leftSwitch.getValue() == HIGH) {
-      stepper.setSpeed(-stepper.speed());
+      Serial.println("!! reversed");
     } else {
       stepper.runSpeed();
     }
+    delay(0);
   }
 
-  bool foundRightSide = true;
+  Serial.println("...  Finding right");
+  bool foundRightSide = false;
   while (!foundRightSide) {
     leftSwitch.update();
     rightSwitch.update();
-    if (leftSwitch.getValue() == HIGH) {
-      sliderLength = stepper.currentPosition() - PADDING;
+    if (leftSwitch.getValue()) {
+      spd = -stepper.speed();
+      stepper.setSpeed(spd); // turn around
+      // move so switch isn't activated anymore
+      while (leftSwitch.getValue()) {
+        stepper.runSpeed();
+        leftSwitch.update();
+        delay(0);
+      }
+      sliderLength = stepper.currentPosition(); // set other endpoint (found length)
       foundRightSide = true;
-    } else if (rightSwitch.getValue() == HIGH) {
+      Serial.println(".... Found right");
+      delay(500); // TODO hack, figure out how to properly wait for switch to deactivate
+    } else if (rightSwitch.getValue()) {
       stepper.setSpeed(-stepper.speed());
+      Serial.println("!! reversed");
     } else {
       stepper.runSpeed();
     }
+    delay(0);
   }
 
-  stepper.setSpeed(20);
+  Serial.println(".....Centering");
+  stepper.setSpeed(stepper.speed() * 2);
   stepper.runToNewPosition(long(sliderLength / 2));
+  Serial.println("Calibration complete!");
+  
   stepper.setSpeed(analogToSpeed(speedPot.getValue()));
 }
 
