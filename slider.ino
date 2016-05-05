@@ -1,53 +1,162 @@
 #include <AccelStepper.h>
 
-const int START_BUTTON = 8;
-const int LEFT_SWITCH = 2;
-const int RIGHT_SWITCH = 4;
-const int SPEED_SLIDER = A0;
 // const int LED = 13;    // DO NOT USE ----------------- v  ----
-
 AccelStepper stepper(AccelStepper::FULL4WIRE, 10, 11, 12, 13);
 
+class Input {
+ public:
+  Input(int pin) {
+    this->pin = pin;
+    pinMode(pin, INPUT);
+  };
+  void update() {
+    lastValue = value;
+    value = this->read();
+    if (this->changed()) {
+      readSinceChange = false;
+      lastChanged = millis();
+    }
+  };
+  int getValue() {
+    readSinceChange = true;
+    return value;
+  }
+  bool changed() {
+    readSinceChange = true;
+    return value != lastValue; 
+  }
+  bool changedSinceRead() {
+    readSinceChange = true;
+    return readSinceChange; 
+  }
+ protected:
+  int pin;
+  int value;
+  int lastValue;
+  unsigned long lastChanged;
+  bool readSinceChange;
+  virtual int read() { return 0; }; // Must override
+};
+
+class ButtonInput: public Input {
+ public:
+  ButtonInput(int pin) : Input(pin) {};
+ protected:
+  int read() {
+    return digitalRead(pin);
+  }
+};
+
+class PotInput: public Input {
+ public:
+  PotInput(int pin) : Input(pin) {};
+ protected:
+  int read() {
+    return analogRead(pin);
+  }
+};
+
 enum State {
-  oscillate,
-  oneDirection
-}
+  calibrating,
+  oneDirection,
+  oscillating,
+  stopped
+};
+
+const int PADDING = 10;
+const float CALIBRATION_SPEED = 10;
+
 double acceleration = 0; // 0 is constant speed
 double velocity = 0; // indicates direction, negative/positive ~= left/right
+State currentState = stopped;
 
-int startButtonState;
+ButtonInput startButton(8);
+ButtonInput leftSwitch(2);
+ButtonInput rightSwitch(4);
+PotInput speedPot(A0);
+
+int sliderLength;
+int sliderPosition;
+
+float analogToSpeed(int value) {
+  //              v -- max analog value
+  return (value / 1023) * stepper.maxSpeed();
+}
 
 void setup() {
-  stepper.setMaxSpeed(1000);
-  stepper.setSpeed(50);
-  pinMode(START_BUTTON, INPUT);
-  startButtonState = START_BUTTON;
-  pinMode(LEFT_SWITCH, INPUT);
-  pinMode(RIGHT_SWITCH, INPUT);
+  stepper.setMaxSpeed(200);
   
-  //pinMode(LED, OUTPUT);
   // initialize the serial port:
   Serial.begin(9600);
+
+  calibrate();
+  currentState = stopped;
 }
 
 void loop() {
-  int s = digitalRead(START_BUTTON);
-  if (s != startButtonState) {
-    Serial.println("START CHANGED");
-  }
-  startButtonState = s;
+  startButton.update();
+  leftSwitch.update();
+  rightSwitch.update();
+  speedPot.update();
 
-  if (startButtonState == 1) {
-    stepper.runSpeed();
-  }
-
-  if (digitalRead(LEFT_SWITCH)) {
-    Serial.println("LEFT ON");
-  }
-  if (digitalRead(RIGHT_SWITCH)) {
-    Serial.println("RIGHT ON");
+  if (startButton.getValue() == HIGH) {
+    currentState = oscillating;
+  } else {
+    currentState = stopped;
   }
 
-  stepper.setSpeed(analogRead(SPEED_SLIDER));
+  if (speedPot.changed()) {
+    stepper.setSpeed(analogToSpeed(speedPot.getValue())); 
+  }
+  
+  switch (currentState) {
+  case oscillating:
+    stepper.runSpeed(); // TODO: this should accellerate if set
+    break;
+  }
+}
+
+/**
+ * set up min and max positions
+ * 
+ * blocking operation
+ * has many side effects
+ */
+void calibrate() {
+  currentState = calibrating;
+  stepper.setSpeed(-CALIBRATION_SPEED);
+
+  bool foundLeftSide = false;
+  while (!foundLeftSide) {
+    leftSwitch.update();
+    rightSwitch.update();
+    if (rightSwitch.getValue() == HIGH) {
+      stepper.setCurrentPosition(-PADDING);
+      foundLeftSide = true;
+      stepper.setSpeed(-stepper.speed());
+    } else if (leftSwitch.getValue() == HIGH) {
+      stepper.setSpeed(-stepper.speed());
+    } else {
+      stepper.runSpeed();
+    }
+  }
+
+  bool foundRightSide = true;
+  while (!foundRightSide) {
+    leftSwitch.update();
+    rightSwitch.update();
+    if (leftSwitch.getValue() == HIGH) {
+      sliderLength = stepper.currentPosition() - PADDING;
+      foundRightSide = true;
+    } else if (rightSwitch.getValue() == HIGH) {
+      stepper.setSpeed(-stepper.speed());
+    } else {
+      stepper.runSpeed();
+    }
+  }
+
+  stepper.setSpeed(20);
+  stepper.runToNewPosition(long(sliderLength / 2));
+  stepper.setSpeed(analogToSpeed(speedPot.getValue()));
 }
 
