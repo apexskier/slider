@@ -40,52 +40,70 @@ class Input {
  public:
   Input(int pin) {
     this->pin = pin;
-    this->lastChangeTime = millis();
     this->currentValue = LOW;
-    this->lastEvent = NullEvent();
+    this->lastEvent = Null;
     pinMode(pin, INPUT);
+
+    unsigned long now = millis();
+    this->lastChangeTime = 0;
+    this->lastUpdateTime = 0;
   };
 
+  /**
+   * Update the value and internals of an input and generate events.
+   * Rate limited
+   */
   void update() {
+    unsigned long now = millis();
+    if (now - lastUpdateTime <= RATE_LIMIT) {
+      return;
+    }
+
     int value = digitalRead(pin);
+    // Serial.println("read " + String(value) + " on pin " + String(pin));
     // event will be generated
     if (value != currentValue) {
-      unsigned long now = millis();
-      if (lastEvent.type != Null) {
-        Serial.print("Warning! Unconsumed event in queue for input ");
-        Serial.println(pin);
+      if (lastEvent != Null) {
+        Serial.println("Warning! Unconsumed event in queue for input " + String(pin));
       }
       if (value) {
-        lastEvent = ButtonDownEvent(now - lastChangeTime);
+        lastEvent = ButtonDown;
         if (DEBUG) {
-          Serial.println("generated ButtonDownEvent on " + String(pin));
+          Serial.println("GENERATE ButtonDownEvent on " + String(pin));
         }
       } else {
-        lastEvent = ButtonUpEvent(now - lastChangeTime);
+        lastEvent = ButtonUp;
         if (DEBUG) {
-          Serial.println("generated ButtonUpEvent on " + String(pin));
+          Serial.println("GENERATE ButtonUpEvent on " + String(pin));
         }
       }
       lastChangeTime = now;
       currentValue = value;
     }
+    lastUpdateTime = now;
   };
 
-  Event consumeEvent() {
-    Event e = lastEvent;
-    if (DEBUG) {
-      Serial.print("consumed ");
-      switch (e.type) {
-        case Null:
-          Serial.print("NullEvent");
-        case ButtonUp:
-          Serial.print("ButtonUpEvent");
-        case ButtonDown:
-          Serial.print("ButtonDownEvent");
-      }
-      Serial.println(" on " + String(pin));
+  EventType consumeEvent() {
+    if (lastEvent == Null) {
+      return Null;
     }
-    lastEvent = NullEvent();
+    if (DEBUG) {
+      switch (lastEvent) {
+        case ButtonUp:
+          Serial.println("CONSUME ButtonUpEvent on " + String(pin));
+          break;
+        case ButtonDown:
+          Serial.println("CONSUME ButtonDownEvent on " + String(pin));
+          break;
+        case Null:
+          Serial.println("CONSUME NullEvent on " + String(pin));
+          break;
+        default:
+          Serial.println("CONSUME Unknown Event on " + String(pin));
+      }
+    }
+    EventType e = lastEvent;
+    lastEvent = Null;
     return e;
   };
 
@@ -93,7 +111,9 @@ class Input {
   int pin;
   int currentValue;
   unsigned long lastChangeTime;
-  Event lastEvent;
+  unsigned long lastUpdateTime;
+  EventType lastEvent;
+  const static unsigned long RATE_LIMIT = 10;
 };
 
 // const int LED = 13;    // DO NOT USE ----------------- v  ----
@@ -149,6 +169,9 @@ float analogToSpeed(int value) {
 }
 
 void startMovingLeft() {
+  if (DEBUG) {
+    Serial.println("MOVE LEFT");
+  }
   int speed = stepper.speed();
   if (speed > 0) {
     speed = -speed;
@@ -157,6 +180,9 @@ void startMovingLeft() {
 }
 
 void startMovingRight() {
+  if (DEBUG) {
+    Serial.println("MOVE RIGHT");
+  }
   int speed = stepper.speed();
   if (speed < 0) {
     speed = -speed;
@@ -166,6 +192,7 @@ void startMovingRight() {
 
 void markLeft() {
   int speed = stepper.speed();
+  sliderLength = sliderLength - stepper.currentPosition();
   stepper.setCurrentPosition(0);
   stepper.setSpeed(speed);
   if (DEBUG) {
@@ -199,6 +226,8 @@ void setup() {
   // initialize the serial port:
   Serial.begin(9600);
 
+  delay(300);
+
   // calibrate();
   changeState(CalibratingFindLeft);
   stepper.setSpeed(CALIBRATION_SPEED);
@@ -206,29 +235,35 @@ void setup() {
 }
 
 void loop() {
+  // Serial.println("-------------------------");
+  State loopState = currentState;
+
   // Read inputs
   startButton->update();
   leftSwitch->update();
   rightSwitch->update();
 
-  Event startEvent = startButton->consumeEvent();
-  Event leftEvent = leftSwitch->consumeEvent();
-  Event rightEvent = rightSwitch->consumeEvent();
+  EventType startEvent = startButton->consumeEvent();
+  EventType leftEvent = leftSwitch->consumeEvent();
+  EventType rightEvent = rightSwitch->consumeEvent();
 
   // Navigate through state machine
   // * Event based
-  switch (startEvent.type) {
+  switch (startEvent) {
     case ButtonUp:
-      switch (currentState) {
+      switch (loopState) {
         case Stopped:
           // TODO: choose direction
-          changeState(OscillatingLeft);
-          changeState(OscillatingRight);
+          if (stepper.speed() > 0) {
+            changeState(OscillatingRight);
+          } else {
+            changeState(OscillatingLeft);
+          }
         break;
       }
       break;
     case ButtonDown:
-      switch (currentState) {
+      switch (loopState) {
         case OscillatingLeft:
         case OscillatingRight:
         case MoveLeft:
@@ -238,59 +273,69 @@ void loop() {
       }
   }
 
-  switch (leftEvent.type) {
+  switch (leftEvent) {
     case ButtonUp:
-      switch (currentState) {
+      switch (loopState) {
         case Stopped:
           changeState(MoveLeft);
           startMovingLeft();
           break;
       }
+      break;
     case ButtonDown:
-      markLeft();
-      switch (currentState) {
+      switch (loopState) {
         case OscillatingLeft:
-          changeState(OscillatingRight);
+          markLeft();
           startMovingRight();
+          changeState(OscillatingRight);
           break;
         case CalibratingFindLeft:
-          changeState(CalibratingFindRight);
+          markLeft();
           startMovingRight();
+          changeState(CalibratingFindRight);
           break;
         case CalibratingReset:
+          markLeft();
+          startMovingRight();
           changeState(CalibratingFindRight);
-          startMovingLeft();
           break;
         case MoveLeft:
+          markLeft();
+          startMovingRight();
           changeState(Stopped);
           break;
       }
   }
 
-  switch (rightEvent.type) {
+  switch (rightEvent) {
     case ButtonUp:
-      switch (currentState) {
+      switch (loopState) {
         case Stopped:
           changeState(MoveRight);
           startMovingRight();
           break;
       }
+      break;
     case ButtonDown:
-      markRight();
-      switch (currentState) {
+      switch (loopState) {
         case OscillatingRight:
-          changeState(OscillatingLeft);
+          markRight();
           startMovingLeft();
+          changeState(OscillatingLeft);
           break;
         case CalibratingFindRight:
-          changeState(CalibratingReset);
+          markRight();
           startMovingLeft();
+          changeState(CalibratingReset);
           break;
         case CalibratingReset:
-          changeState(CalibratingFindRight);
-          startMovingRight();
+          markRight();
+          startMovingLeft();
+          changeState(CalibratingFindLeft);
           break;
         case MoveRight:
+          markRight();
+          startMovingLeft();
           changeState(Stopped);
           break;
       }
@@ -300,32 +345,36 @@ void loop() {
 
   // * global state based // TODO: better word than state here
   if (sliderPosition < PADDING) {
-    switch (currentState) {
+    switch (loopState) {
       case OscillatingLeft:
+        startMovingRight();
         changeState(OscillatingRight);
         break;
       case MoveLeft:
+        startMovingRight();
         changeState(Stopped);
         break;
     }
   } else if (sliderPosition > sliderLength - PADDING) {
-    switch (currentState) {
+    switch (loopState) {
       case OscillatingRight:
+        startMovingLeft();
         changeState(OscillatingLeft);
         break;
       case MoveRight:
+        startMovingLeft();
         changeState(Stopped);
         break;
     }
   }
 
-  if (currentState == CalibratingReset &&
+  if (loopState == CalibratingReset &&
       sliderPosition < sliderLength / 2) {
     changeState(Stopped);
   }
 
   // State actions
-  switch (currentState) {
+  switch (loopState) {
     case OscillatingLeft:
     case MoveLeft:
     case OscillatingRight:
@@ -341,76 +390,3 @@ void loop() {
       break;
   }
 }
-
-/**
- * set up min and max positions
- *
- * blocking operation
- * has many side effects
- */
-// void calibrate() {
-//   Serial.println("Starting calibration");
-//   currentState = calibrating;
-//   float spd = -CALIBRATION_SPEED;
-//   stepper.setSpeed(spd);
-//
-//   Serial.println(".    Finding left");
-//   bool foundLeftSide = false;
-//   while (!foundLeftSide) {
-//     leftSwitch.update();
-//     rightSwitch.update();
-//     if (rightSwitch.getValue()) {
-//       spd = -stepper.speed();
-//       stepper.setSpeed(spd); // turn around
-//       // move so switch isn't activated anymore
-//       while (rightSwitch.getValue()) {
-//         stepper.runSpeed();
-//         rightSwitch.update();
-//         delay(0);
-//       }
-//       stepper.setCurrentPosition(0); // set "endpoint"
-//       stepper.setSpeed(spd); // speed must be reset after setCurrentPosition
-//       foundLeftSide = true;
-//       Serial.println("..   Found left");
-//       delay(500); // TODO hack, figure out how to properly wait for switch to deactivate
-//     } else if (leftSwitch.getValue()) {
-//       stepper.setSpeed(-stepper.speed());
-//       Serial.println("!! reversed");
-//     } else {
-//       stepper.runSpeed();
-//     }
-//     delay(0);
-//   }
-//
-//   Serial.println("...  Finding right");
-//   bool foundRightSide = false;
-//   while (!foundRightSide) {
-//     leftSwitch.update();
-//     rightSwitch.update();
-//     if (leftSwitch.getValue()) {
-//       spd = -stepper.speed();
-//       stepper.setSpeed(spd); // turn around
-//       // move so switch isn't activated anymore
-//       while (leftSwitch.getValue()) {
-//         stepper.runSpeed();
-//         leftSwitch.update();
-//         delay(0);
-//       }
-//       sliderLength = stepper.currentPosition(); // set other endpoint (found length)
-//       foundRightSide = true;
-//       Serial.println(".... Found right");
-//       delay(500); // TODO hack, figure out how to properly wait for switch to deactivate
-//     } else if (rightSwitch.getValue()) {
-//       stepper.setSpeed(-stepper.speed());
-//       Serial.println("!! reversed");
-//     } else {
-//       stepper.runSpeed();
-//     }
-//     delay(0);
-//   }
-//
-//   Serial.println(".....Centering");
-//   stepper.setSpeed(stepper.speed() * 2);
-//   stepper.runToNewPosition(long(sliderLength / 2));
-//   Serial.println("Calibration complete!");
-// }
