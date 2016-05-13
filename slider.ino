@@ -102,8 +102,7 @@ AccelStepper stepper(AccelStepper::FULL4WIRE, 10, 11, 12, 13);
 const int PADDING = 10;
 const float CALIBRATION_SPEED = 30;
 
-int sliderLength;
-int sliderPosition;
+long sliderLength = 0;
 
 Input* startButton = NULL;
 Input* leftSwitch = NULL;
@@ -165,10 +164,25 @@ void startMovingRight() {
   stepper.setSpeed(speed);
 }
 
+void markLeft() {
+  int speed = stepper.speed();
+  stepper.setCurrentPosition(0);
+  stepper.setSpeed(speed);
+  if (DEBUG) {
+    Serial.println("MARK LEFT");
+  }
+}
+
+void markRight() {
+  sliderLength = stepper.currentPosition();
+  if (DEBUG) {
+    Serial.println("MARK RIGHT (" + String(sliderLength) + ")");
+  }
+}
+
 void changeState(State s) {
   if (DEBUG) {
-    State oldState = currentState;
-    Serial.println("STATE CHANGE: from " + stateName(oldState) + " to " + stateName(s));
+    Serial.println("STATE CHANGE: from " + stateName(currentState) + " to " + stateName(s));
   }
   currentState = s;
 }
@@ -233,13 +247,11 @@ void loop() {
           break;
       }
     case ButtonDown:
+      markLeft();
       switch (currentState) {
         case OscillatingLeft:
           changeState(OscillatingRight);
           startMovingRight();
-          break;
-        case MoveLeft:
-          changeState(Stopped);
           break;
         case CalibratingFindLeft:
           changeState(CalibratingFindRight);
@@ -248,6 +260,9 @@ void loop() {
         case CalibratingReset:
           changeState(CalibratingFindRight);
           startMovingLeft();
+          break;
+        case MoveLeft:
+          changeState(Stopped);
           break;
       }
   }
@@ -261,13 +276,11 @@ void loop() {
           break;
       }
     case ButtonDown:
+      markRight();
       switch (currentState) {
         case OscillatingRight:
           changeState(OscillatingLeft);
           startMovingLeft();
-          break;
-        case MoveRight:
-          changeState(Stopped);
           break;
         case CalibratingFindRight:
           changeState(CalibratingReset);
@@ -277,18 +290,37 @@ void loop() {
           changeState(CalibratingFindRight);
           startMovingRight();
           break;
+        case MoveRight:
+          changeState(Stopped);
+          break;
       }
   }
 
+  int sliderPosition = stepper.currentPosition();
+
   // * global state based // TODO: better word than state here
   if (sliderPosition < PADDING) {
-    changeState(OscillatingRight);
+    switch (currentState) {
+      case OscillatingLeft:
+        changeState(OscillatingRight);
+        break;
+      case MoveLeft:
+        changeState(Stopped);
+        break;
+    }
   } else if (sliderPosition > sliderLength - PADDING) {
-    changeState(OscillatingLeft);
+    switch (currentState) {
+      case OscillatingRight:
+        changeState(OscillatingLeft);
+        break;
+      case MoveRight:
+        changeState(Stopped);
+        break;
+    }
   }
 
   if (currentState == CalibratingReset &&
-      abs(sliderPosition - sliderLength / 2) < 2) {
+      sliderPosition < sliderLength / 2) {
     changeState(Stopped);
   }
 
