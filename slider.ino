@@ -1,6 +1,7 @@
 #include <AccelStepper.h>
 
 #define DEBUG true
+#define MAX_SPEED 120
 
 enum EventType {
   Null,
@@ -127,6 +128,7 @@ long sliderLength = 0;
 Input* startButton = NULL;
 Input* leftSwitch = NULL;
 Input* rightSwitch = NULL;
+int speedPotPin = A0;
 
 enum State {
   Stopped,
@@ -163,9 +165,24 @@ String stateName(State s) {
 
 State currentState = Stopped;
 
+void setSliderSpeed() {
+    float speed = analogToSpeed(analogRead(speedPotPin));
+    float currentSpeed = stepper.speed();
+    if (abs(abs(currentSpeed) - speed) > 2) {
+        if (currentSpeed > 0) {
+            stepper.setSpeed(speed);
+        } else {
+            stepper.setSpeed(-speed);
+        }
+        if (DEBUG) {
+            Serial.println("SETTING SPEED: " + String(speed));
+        }
+    }
+}
+
 float analogToSpeed(int value) {
-  //              v -- max analog value
-  return (value / 1023) * stepper.maxSpeed();
+  //                     v -- max analog value
+  return (float(value) / 1023.0) * MAX_SPEED;
 }
 
 void startMovingLeft() {
@@ -220,7 +237,7 @@ void setup() {
   rightSwitch = new Input(4);
   // speedPot = ... A0
 
-  stepper.setMaxSpeed(200);
+  stepper.setMaxSpeed(MAX_SPEED);
   stepper.setAcceleration(1);
 
   // initialize the serial port:
@@ -371,6 +388,12 @@ void loop() {
   if (loopState == CalibratingReset &&
       sliderPosition < sliderLength / 2) {
     changeState(Stopped);
+  }
+
+  if (!(loopState == CalibratingFindLeft ||
+        loopState == CalibratingFindRight ||
+        loopState == CalibratingReset)) {
+    setSliderSpeed();
   }
 
   // State actions
