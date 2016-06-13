@@ -1,30 +1,31 @@
-pullyInnerDiameter = 5;
-pullyOuterDiameter = 17.8 + .4;
+// rule of thumb
+// .2 mm space for friction fit
+// .4 mm space for loose fit
+
+pullyInnerDiameter = 5 - .2 * 2;
+pullyOuterDiameter = 17.97 + .4 * 2;
 pullyWidth = 7.4;
 pullyElevation = .5;
 pullyBaseExtra = .8;
-pullyVerticalPadding = 0.4;
-pullyRadialPadding = 0.4;
+pullyVerticalPadding = .4;
+pullyRadialPadding = .4;
 
 wallWidth = 2;
 wallExtraSpace = 1.5;
 
-baseWidth = 1.5;
-baseLengthExtra = 26;
-
-mountHeight = 6;
-mountRadius = 4;
-mountWallWidth = 1;
-mountPadding = 0.2;
-mountGripHeight = 0.5;
-mountGripPad = mountPadding;
-mountPartSpacing = 1.5;
-
-mountOtherOffset = 3 + mountRadius + 0.2;
-mountOtherWidth = 14;
-mountOtherDepth = 8 - 0.2 * 2;
-
 outerRadius = pullyOuterDiameter / 2 + wallWidth + wallExtraSpace;
+
+mountNutDiameter = 12.8 + .2 * 2;
+mountNutHeight = 4.6;
+mountScrewDiameter = 6.2 + .4 * 2;
+// ensure this is < timing belt diameter
+mountDiameter = mountNutDiameter + 3;
+// distance between middle of two mounting holes
+mountSpaceBetween = 4 + 4.2 + 4;
+
+baseThickness = 1.5;
+baseLengthExtra = mountDiameter * 2;
+baseWidth = 30 - .2;
 
 module guardStraight(height, width) {
     translate([outerRadius - width, 0, 0]) {
@@ -52,107 +53,102 @@ module guard(height, width = wallWidth) {
     }
 }
 
-// base
-difference() {
-    union() {
-        cylinder(h = baseWidth, r1 = outerRadius, r2 = outerRadius);
-        translate([-outerRadius, 0, 0]) {
-            cube([outerRadius * 2, outerRadius + baseLengthExtra, baseWidth]);
-        }
+module mountNutCutout() {
+    linear_extrude(height = baseThickness + 2) {
+        circle(d = mountScrewDiameter, $fn = 60);
     }
+}
 
-    translate([0, 0, -1]) {
-        translate([0, 17, 0]) {
-            cylinder(h = 20, d = 8, $fn = 60);
+intersection() {
+    union() {
+        // base
+        difference() {
+            union() {
+                cylinder(h = baseThickness, r1 = outerRadius, r2 = outerRadius);
 
-            translate([0, 13, 0]) {
-                cylinder(h = 20, d = 8, $fn = 60);
+                translate([-baseWidth / 2, 0, 0]) {
+                    cube([baseWidth, outerRadius + baseLengthExtra, baseThickness]);
+                }
+            }
+
+            translate([0, outerRadius + mountDiameter / 2, -1]) {
+                mountNutCutout();
+
+                translate([0, mountSpaceBetween, 0]) {
+                    mountNutCutout();
+                }
+            }
+        }
+
+        // above base
+        translate([0, 0, baseThickness]) {
+            // central shaft
+            cylinder(h = pullyVerticalPadding + pullyElevation, r1 = pullyInnerDiameter / 2 + pullyBaseExtra, r2 = pullyInnerDiameter / 2 + pullyBaseExtra, $fn = 60);
+            cylinder(h = pullyWidth + pullyVerticalPadding + pullyElevation + baseThickness, r1 = pullyInnerDiameter / 2, r2 = pullyInnerDiameter / 2, $fn = 60);
+
+            // outer guard
+            guard(pullyWidth + pullyVerticalPadding + pullyElevation);
+
+            // support rails
+            translate([outerRadius - wallWidth, 0, 0]) {
+                cube([wallWidth, outerRadius + baseLengthExtra, pullyVerticalPadding + pullyElevation]);
+            }
+            translate([-outerRadius, 0, 0]) {
+                cube([wallWidth, outerRadius + baseLengthExtra, pullyVerticalPadding + pullyElevation]);
+            }
+
+            // top lip
+            translate([0, 0, pullyWidth + pullyVerticalPadding + pullyElevation]) {
+                guard(baseThickness, wallWidth + wallExtraSpace - pullyRadialPadding);
+            }
+
+            // nut holders
+            translate([0, outerRadius + mountDiameter / 2, 0]) {
+                intersection() {
+                    difference() {
+                        hull() {
+                            linear_extrude(height = mountNutHeight) {
+                                circle(d = mountDiameter, $fn = 30);
+                            }
+
+                            translate([0, mountSpaceBetween, 0]) {
+                                linear_extrude(height = mountNutHeight) {
+                                    circle(d = mountDiameter, $fn = 30);
+                                }
+                            }
+                        }
+
+                        translate([0, 0, -1]) {
+                            linear_extrude(height = mountNutHeight + 2) {
+                                circle(d = mountNutDiameter, $fn = 6);
+                            }
+
+                            translate([0, mountSpaceBetween, 0]) {
+                                linear_extrude(height = mountNutHeight + 2) {
+                                    circle(d = mountNutDiameter, $fn = 6);
+                                }
+                            }
+                        }
+                    }
+
+                    cutWidth = mountNutDiameter - 3;
+                    translate([-cutWidth / 2, -mountDiameter / 2, 0]) {
+                        cube([cutWidth, mountSpaceBetween + mountDiameter, mountNutHeight + 2]);
+                    }
+                }
             }
         }
     }
-}
 
-// above base
-translate([0, 0, baseWidth]) {
-    // central shaft
-    cylinder(h = pullyVerticalPadding + pullyElevation, r1 = pullyInnerDiameter / 2 + pullyBaseExtra, r2 = pullyInnerDiameter / 2 + pullyBaseExtra, $fn = 60);
-    cylinder(h = pullyWidth + pullyVerticalPadding + pullyElevation, r1 = pullyInnerDiameter / 2, r2 = pullyInnerDiameter / 2, $fn = 60);
+    translate([0, 0, -50]) {
+        linear_extrude(height = 100) {
+            distanceToRounded = outerRadius + mountDiameter + mountSpaceBetween - (baseWidth / 2);
+            translate([0, distanceToRounded, 0]) {
+                circle(d = baseWidth, $fn = 300);
+            }
 
-    // outer guard
-    guard(pullyWidth + pullyVerticalPadding + pullyElevation);
-    translate([outerRadius - wallWidth, 0, 0]) {
-        cube([wallWidth, outerRadius + baseLengthExtra, height]);
-    }
-    translate([-outerRadius, 0, 0]) {
-        cube([wallWidth, outerRadius + baseLengthExtra, height]);
-    }
-
-    // top lip
-    translate([0, 0, pullyWidth + pullyVerticalPadding + pullyElevation]) {
-        guard(baseWidth, wallWidth + wallExtraSpace - pullyRadialPadding);
+            square(distanceToRounded * 2, center = true);
+        }
     }
 }
 
-module cutMountingCylinderOut() {
-    translate([-(mountRadius + 4), -mountPartSpacing/2, 0]) {
-        cube([(mountRadius + 4) * 2, mountPartSpacing, mountHeight]);
-    }
-}
-
-// mounting parts
-//translate([0, 0, -mountGripHeight]) {
-//    difference() {
-//        cylinder(h = mountGripHeight, r1 = mountRadius - mountPadding, r2 = mountRadius - mountPadding + mountGripPad);
-//
-//        cylinder(h = mountGripHeight, r1 = mountRadius - mountPadding - mountWallWidth, r2 = mountRadius - mountPadding - mountWallWidth);
-//
-//        cutMountingCylinderOut();
-//        rotate(90, [0, 0, 1]) {
-//            cutMountingCylinderOut();
-//        }
-//    }
-//}
-//
-//translate([0, 0, -mountHeight]) {
-//
-//    difference() {
-//        cylinder(h = mountHeight, r1 = mountRadius - mountPadding, r2 = mountRadius - mountPadding);
-//
-//        cylinder(h = mountHeight, r1 = mountRadius - mountPadding - mountWallWidth, r2 = mountRadius - mountPadding - mountWallWidth);
-//
-//        cutMountingCylinderOut();
-//        rotate(90, [0, 0, 1]) {
-//            cutMountingCylinderOut();
-//        }
-//    }
-//
-//    translate([-mountOtherWidth / 2, mountOtherOffset, 0]) {
-//        cube([mountOtherWidth, mountOtherDepth, mountHeight]);
-//    }
-//
-//    translate([0, 0, -mountGripHeight]) {
-//        difference() {
-//            cylinder(h = mountGripHeight, r1 = mountRadius - mountPadding + mountGripPad, r2 = mountRadius - mountPadding);
-//
-//            cylinder(h = mountGripHeight, r1 = mountRadius - mountPadding - mountWallWidth, r2 = mountRadius - mountPadding - mountWallWidth);
-//
-//            cutMountingCylinderOut();
-//            rotate(90, [0, 0, 1]) {
-//                cutMountingCylinderOut();
-//            }
-//        }
-//
-//        translate([0, 0, -mountGripHeight]) {
-//            difference() {
-//                cylinder(h = mountGripHeight, r1 = mountRadius - mountPadding, r2 = mountRadius - mountPadding + mountGripPad);
-//
-//                cylinder(h = mountGripHeight, r1 = mountRadius - mountPadding - mountWallWidth, r2 = mountRadius - mountPadding - mountWallWidth);
-//
-//                cutMountingCylinderOut();
-//                rotate(90, [0, 0, 1]) {
-//                    cutMountingCylinderOut();
-//                }
-//            }
-//        }
-//    }
-//}
