@@ -1,7 +1,7 @@
 #include <AccelStepper.h>
 
 #define DEBUG true
-#define MAX_SPEED 120
+#define MAX_SPEED 220
 
 enum EventType {
   Null,
@@ -121,7 +121,7 @@ class Input {
 AccelStepper stepper(AccelStepper::FULL4WIRE, 10, 11, 12, 13);
 
 const int PADDING = 10;
-const float CALIBRATION_SPEED = 30;
+const float CALIBRATION_SPEED = 100;
 
 long sliderLength = 0;
 
@@ -166,7 +166,7 @@ String stateName(State s) {
 State currentState = Stopped;
 
 void setSliderSpeed() {
-    float speed = analogToSpeed(analogRead(speedPotPin));
+    float speed = analogToSpeed(1023 - analogRead(speedPotPin));
     float currentSpeed = stepper.speed();
     if (abs(abs(currentSpeed) - speed) > 2) {
         if (currentSpeed > 0) {
@@ -235,7 +235,6 @@ void setup() {
   startButton = new Input(8);
   leftSwitch = new Input(2);
   rightSwitch = new Input(4);
-  // speedPot = ... A0
 
   stepper.setMaxSpeed(MAX_SPEED);
   stepper.setAcceleration(1);
@@ -277,6 +276,9 @@ void loop() {
             changeState(OscillatingLeft);
           }
         break;
+        case CalibratingReset:
+          changeState(Stopped);
+          break;
       }
       break;
     case ButtonDown:
@@ -285,6 +287,7 @@ void loop() {
         case OscillatingRight:
         case MoveLeft:
         case MoveRight:
+        case CalibratingReset:
           changeState(Stopped);
           break;
       }

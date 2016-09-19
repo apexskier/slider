@@ -43,9 +43,8 @@ module screwHole() {
 }
 
 module nut() {
-    height = 3;
-    translate([0, 0, boxHeight - wallWidth * 3 - height]) {
-        cylinder(h = height, d = nutDiameter, $fn = 6);
+    linear_extrude(height = boxHeight - wallWidth * 6) {
+        circle(d = nutDiameter, $fn = 6);
     }
 }
 
@@ -100,16 +99,18 @@ module switchCable() {
 
 motorCtlWidth = 1.65;
 motorCtlLength = 27;
-translate([boxWidth / 2 - (motorCtlWidth + wallWidth * 2) - wallWidth * 3, -boxDepth + baseLengthExtra + wallWidth * 3, wallWidth]) {
-    difference() {
-        translate([0, 0, wallWidth]) {
-            cube([motorCtlWidth + wallWidth * 2, motorCtlLength + wallWidth * 2, .6]);
-            translate([0, 0, -wallWidth]) {
-                cube([motorCtlWidth + wallWidth * 2, motorCtlLength + wallWidth * 2, wallWidth]);
+translate([motorCtlLength / 2 + wallWidth, -boxDepth + baseLengthExtra + wallWidth * 3, wallWidth]) {
+    rotate(90, [0, 0, 1]) {
+        difference() {
+            translate([0, 0, wallWidth]) {
+                cube([motorCtlWidth + wallWidth * 2, motorCtlLength + wallWidth * 2, .6]);
+                translate([0, 0, -wallWidth]) {
+                    cube([motorCtlWidth + wallWidth * 2, motorCtlLength + wallWidth * 2, wallWidth]);
+                }
             }
-        }
-        translate([wallWidth, wallWidth, wallWidth]) {
-            cube([motorCtlWidth, motorCtlLength, 10]);
+            translate([wallWidth, wallWidth, wallWidth]) {
+                cube([motorCtlWidth, motorCtlLength, 10]);
+            }
         }
     }
 }
@@ -208,17 +209,43 @@ difference() {
     }
 
     translate([boxWidth / 2, 0, boxHeight / 2]) {
-        // button hole
-        translate([-10, -motorWidth / 2 - wallWidth, 0]) {
-            rotate(90, [0, 1, 0]) {
-                cylinder(d = dialDiameter, h = 20, $fn = 40);
+        // dial hole
+        translate([0, -motorWidth / 2 - wallWidth, 0]) {
+            translate([-10, 0, 0]) {
+                rotate(90, [0, 1, 0]) {
+                    cylinder(d = dialDiameter, h = 20, $fn = 40);
+                }
+            }
+
+            translate([-.4, 0, 0]) {
+                rotate(90, [0, 1, 0]) {
+                    linear_extrude(height = 1) {
+                        innerR = 11;
+                        outerR = 13.5;
+                        difference() {
+                            color( [0, 1, 0] ) {
+                                translate([0, outerR - innerR, 0])
+                                    circle(r = outerR);
+                            }
+
+                            circle(r = innerR);
+
+                            color( [0, 0, 1] ) {
+                                translate([0, -outerR, 0])
+                                    square(outerR * 3);
+                            }
+                        }
+                    }
+                }
             }
         }
 
-        // dial hole
-        translate([-switchHeadSide / 2 - 20, 0, -switchHeadSide / 2]) cube([100, switchHeadSide, switchHeadSide]);
+        // button hole
+        translate([-switchHeadSide / 2 - 20, 0, -switchHeadSide / 2])
+            cube([100, switchHeadSide, switchHeadSide]);
         sHInside = switchHeadSide + 4;
-        translate([-sHInside - wallWidth + .8, -2, -sHInside / 2]) cube([20, sHInside, sHInside]);
+        translate([-sHInside - wallWidth + .8, -2, -sHInside / 2])
+            cube([20, sHInside, sHInside]);
     }
 
     // FTDI cable
@@ -245,7 +272,7 @@ difference() {
         }
     }
 
-    translate([boxWidth / 2 - .2, -boxDepth + baseLengthExtra + wallWidth, wallWidth]) {
+    translate([boxWidth / 2 - .4, -boxDepth + baseLengthExtra + wallWidth, wallWidth]) {
         rotate(90, [1, 0, 0]) {
             rotate(90, [0, 1, 0]) {
                 text("https://github.com/apexskier/slider v1.0.0", size = 3);
