@@ -4,6 +4,12 @@ Arduino driven mechanical video slider.
 
 [Parts list](https://docs.google.com/a/camlittle.com/spreadsheets/d/1xlj7D98955wYuXj9ept1h3pb_NClaukpYvvVbXTrUsw/edit?usp=sharing)
 
+## Finished project
+
+![Control box and motor housing](images/control_box.jpg)
+
+![Timing belt pully and 3D printed mount](images/printed_pully.jpg)
+
 ## Features
 
 - Auto calibration
